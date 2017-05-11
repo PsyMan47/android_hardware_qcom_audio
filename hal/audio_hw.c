@@ -75,6 +75,7 @@
 #include "audio_extn.h"
 #include "voice_extn.h"
 #include "audio_amplifier.h"
+#include "ultrasound.h"
 
 #include "sound/compress_params.h"
 #include "sound/asound.h"
@@ -331,6 +332,8 @@ const char * const use_case_table[AUDIO_USECASE_MAX] = {
     [USECASE_AUDIO_PLAYBACK_AFE_PROXY] = "afe-proxy-playback",
     [USECASE_AUDIO_RECORD_AFE_PROXY] = "afe-proxy-record",
     [USECASE_AUDIO_PLAYBACK_EXT_DISP_SILENCE] = "silence-playback",
+    [USECASE_AUDIO_ULTRASOUND_RX] = "ultrasound-rx",
+    [USECASE_AUDIO_ULTRASOUND_TX] = "ultrasound-tx",
 
     /* Transcode loopback cases */
     [USECASE_AUDIO_TRANSCODE_LOOPBACK] = "audio-transcode-loopback",
@@ -839,6 +842,10 @@ int enable_audio_route(struct audio_device *adev,
     audio_extn_sound_trigger_update_stream_status(usecase, ST_EVENT_STREAM_BUSY);
     audio_extn_listen_update_stream_status(usecase, LISTEN_EVENT_STREAM_BUSY);
     audio_extn_utils_send_app_type_cfg(adev, usecase);
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+    if (usecase->id != USECASE_AUDIO_ULTRASOUND_RX &&
+        usecase->id != USECASE_AUDIO_ULTRASOUND_TX)
+#endif
     audio_extn_utils_send_audio_calibration(adev, usecase);
     if ((usecase->type == PCM_PLAYBACK) && is_offload_usecase(usecase->id)) {
         out = usecase->stream.out;
@@ -5947,6 +5954,29 @@ static int adev_set_parameters(struct audio_hw_device *dev, const char *kvpairs)
         }
     }
 
+    ret = str_parms_get_int(parms, "ultrasound_enable", &val);
+    if (ret >= 0) {
+        if (val == 1) {
+            us_start();
+        } else {
+            us_stop();
+        }
+    }
+
+    ret = str_parms_get_int(parms, "ultrasound_set_manual_calibration", &val);
+    if (ret >= 0) {
+        us_set_manual_cal(val);
+    }
+
+    ret = str_parms_get_int(parms, "ultrasound_set_sensitivity", &val);
+    if (ret >= 0) {
+        us_set_sensitivity(val);
+    }
+
+    audio_extn_set_parameters(adev, parms);
+    amplifier_set_parameters(parms);
+
+    // reconfigure should be done only after updating a2dpstate in audio extn
     ret = str_parms_get_str(parms,"reconfigA2dp", value, sizeof(value));
     if (ret >= 0) {
         struct audio_usecase *usecase;
@@ -6936,6 +6966,8 @@ static int adev_open(const hw_module_t *module, const char *name,
 
     if (amplifier_open(adev) != 0)
         ALOGE("Amplifier initialization failed");
+
+    us_init(adev);
 
     *device = &adev->device.common;
 
