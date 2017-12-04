@@ -1032,7 +1032,7 @@ bool platform_send_gain_dep_cal(void *platform, int level) {
         list_for_each(node, &adev->usecase_list) {
             usecase = node_to_item(node, struct audio_usecase, list);
 
-            if (usecase != NULL && usecase->type == PCM_PLAYBACK) {
+            if (usecase != NULL && usecase->type == PCM_PLAYBACK && usecase->stream.out != NULL) {
                 int new_snd_device[2] = {0};
                 int i, num_devices = 1;
 
